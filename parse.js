@@ -1367,7 +1367,11 @@ function parseFence(lines, i) {
       while (r2[m] === f.ch) m++;
       if (m >= f.n && r2.slice(m).trim() === '') { j++; break; }
     }
-    content.push(stripCols(l, cols));
+    // Only a backtick fence strips the opener's indent from its
+    // content; a tilde fence keeps the content's indent verbatim
+    // (marked quirk, t32/t33/doc-22: "  ~~~ts\n  foo" renders
+    // "  foo", while "  ```ts\n  foo" renders "foo").
+    content.push(f.ch === '`' ? stripCols(l, cols) : l);
     j++;
   }
   // One trailing blank line in a fenced code block's content is dropped
