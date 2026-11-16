@@ -1557,13 +1557,20 @@ function parseHtmlBlock(lines, i, ctx, lastNL) {
     while (j < lines.length && !isBlankLine(lines, j, lastNL)) j++;
   }
   // The block's raw text ends with a newline when the line right after
-  // the block is not blank (types 1-5 end at a closing marker, so a
-  // following paragraph keeps the newline). A blank line after the
-  // block swallows the newline. When the block is the last one in its
-  // container, the newline is there only if the container's fed text
-  // ends with one: true at the top level when the source does, false
-  // inside a quote or list item (their fed text is lines joined by \n).
-  const addNL = j < lines.length ? lines[j].trim() !== '' : lastNL;
+  // the block is not blank. Types 1-5 end at a closing marker, so a
+  // following paragraph keeps the newline; a truly empty line after
+  // the block swallows it, but a whitespace-only line (spaces/tabs)
+  // does not: marked keeps the newline after "-->" when the next line
+  // is "\t" or "   " (t23, doc-15). Types 6-7 end AT a blank line,
+  // which is itself the separator, so a whitespace-only line there
+  // swallows the newline (doc-03 "<div>" followed by "\t"). When the
+  // block is the last one in its container, the newline is there only
+  // if the container's fed text ends with one: true at the top level
+  // when the source does, false inside a quote or list item (their
+  // fed text is lines joined by \n).
+  const addNL = type <= 5
+    ? (j < lines.length ? lines[j] !== '' : lastNL)
+    : (j < lines.length ? lines[j].trim() !== '' : lastNL);
   return {
     node: { t: 'html', lines: lines.slice(i, j), addNL, start: i, end: j - 1 },
     next: j,
