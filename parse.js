@@ -918,6 +918,19 @@ function tryLink(s, i, refs, isImage) {
     if ((a.t === 5 || a.t === 6) && a.auto === true) continue;
     children.push(a);
   }
+  // A link whose text holds an emphasis delimiter pair spanning a
+  // code span that itself contains a backtick is not formed by marked
+  // (t26-t28/doc-16/doc-18: "[a _b `` x ` y `` c_](url)" stays
+  // literal, while the same text without the emphasis or without the
+  // nested backtick links normally).
+  for (let k = 0; k < children.length; k++) {
+    const a = children[k];
+    if (a.t !== 1 || a.s.indexOf('`') === -1) continue;
+    let before = false, after = false;
+    for (let m = 0; m < k; m++) if (children[m].t === 3 && children[m].ch === '_') { before = true; break; }
+    for (let m = k + 1; m < children.length; m++) if (children[m].t === 3 && children[m].ch === '_') { after = true; break; }
+    if (before && after) return null;
+  }
   if (!isImage) {
     for (const a of children) if (a.t === 5 && !a.auto) return null;
   }
