@@ -264,7 +264,10 @@ function stripCols(line, n) {
     if (c === 32) { cols++; i++; }
     else if (c === 9) {
       const w = 4 - (cols % 4);
-      if (cols + w > n) return ' '.repeat(cols + w - n) + line.slice(i + 1);
+      // A tab straddling the strip boundary is removed entirely
+      // (fenced/indented code content: "   ```\n\tfoo" renders
+      // "foo", not " foo", t17/doc-17).
+      if (cols + w > n) return line.slice(i + 1);
       cols += w; i++;
     } else break;
   }
@@ -725,8 +728,12 @@ function matchEmailAt(s, i) {
   while (dom.endsWith('.')) { dom = dom.slice(0, -1); k--; }
   if (!validEmailDomain(dom)) return null;
   // A '_' right after the domain would make this part of a longer
-  // word (a.b-c_d@a.b_ is not an autolink); '.' is fine.
-  if (s[k] === '_') return null;
+  // word (a.b-c_d@a.b_ is not an autolink); '.' is fine. But a '_'
+  // run that closes an emphasis opened earlier ("__foo@bar.baz__")
+  // is a delimiter, not part of the word, so the email still links
+  // (doc-04, t21). Heuristic: a '_' anywhere before the email means
+  // a closer may be present; without one the '_' rejects the email.
+  if (s[k] === '_' && s.slice(0, i).indexOf('_') === -1) return null;
   return { text: s.slice(i, k), end: k };
 }
 
@@ -1825,8 +1832,13 @@ function parseList(lines, i, ctx, lastNL) {
   let inPara = false;
   // A fenced code block open inside the current item: its content lines
   // are not paragraph continuations (no strip-4, no merge) and its
-  // closing fence must be a separate line.
+  // closing fence must be a separate line. fenceHasContent tracks
+  // whether the fence already holds a (non-blank) line: an
+  // under-indented first content line does not belong to the fence at
+  // all (the fence stays empty and the line ends the list, t13/t14),
+  // while later under-indented lines are fence content (oracle25).
   let fence = null;
+  let fenceHasContent = false;
   cur.lines.push({ t: stripColsExpand(lines[i], contentIndent), o: i });
   // A paragraph is open only when the item's first line is paragraph
   // text, not a block start (a fence, heading or nested list as the
@@ -1865,7 +1877,8 @@ function parseList(lines, i, ctx, lastNL) {
       if (fence) {
         // Inside a fenced code block: content lines keep their indent
         // (no strip-4, no merge) and the closing fence ends the block.
-        if (fenceCloses(t, fence)) fence = null;
+        if (fenceCloses(t, fence)) { fence = null; fenceHasContent = false; }
+        else if (t.trim() !== '') fenceHasContent = true;
         cur.lines.push({ t, o: j });
         if (t.trim() !== '') curHasContent = true;
         inPara = false;
@@ -1879,6 +1892,7 @@ function parseList(lines, i, ctx, lastNL) {
       const fOpen = (tind0.cols <= 3 || !inPara) ? fenceOpen(t) : null;
       if (fOpen) {
         fence = fOpen;
+        fenceHasContent = false;
         cur.lines.push({ t, o: j });
         if (t.trim() !== '') curHasContent = true;
         inPara = false;
@@ -1923,6 +1937,7 @@ function parseList(lines, i, ctx, lastNL) {
       cur.lines.push({ t: stripColsExpand(line, contentIndent), o: j });
       inPara = cur.lines[0].t.trim() !== '' && !isBlockStartLoose(cur.lines[0].t);
       fence = inPara ? null : fenceOpen(cur.lines[0].t);
+      fenceHasContent = false;
       curHasContent = cur.lines[0].t.trim() !== '';
       j++;
       continue;
@@ -1933,9 +1948,12 @@ function parseList(lines, i, ctx, lastNL) {
       // the item as fence content even when it is not indented enough
       // (it is pushed as-is; the fence strips its own indent). A
       // structural line (heading, blockquote, html block, closing
-      // fence) ends the list instead.
+      // fence) ends the list instead. But an under-indented line
+      // before the fence has any content ends the list (the fence
+      // stays empty, t13/t14) -- it cannot be the fence's first line.
       const r = line.slice(ind.idx);
       if (ind.cols <= 3 && (matchAtx(r) || r[0] === '>' || htmlBlockType(line) >= 1 || fenceCloses(line, fence))) break;
+      if (!fenceHasContent) break;
       cur.lines.push({ t: line, o: j });
       if (line.trim() !== '') curHasContent = true;
       inPara = false;
