@@ -10,16 +10,34 @@ import { parse } from './parse.js';
 
 type Case = { id: string; markdown: string };
 
-const inputDir: string = process.env.MAKEFUN_INPUT_DIR ?? '/input';
-const outputDir: string = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
-
-const raw: string = readFileSync(join(inputDir, 'cases.json'), 'utf8');
-const decoded: unknown = JSON.parse(raw);
-if (!Array.isArray(decoded)) {
-  throw new Error('cases.json must contain a JSON array');
+function dirsFromEnv(): { inputDir: string; outputDir: string } {
+  return {
+    inputDir: process.env.MAKEFUN_INPUT_DIR ?? '/input',
+    outputDir: process.env.MAKEFUN_OUTPUT_DIR ?? '/output',
+  };
 }
-const cases: Case[] = decoded as Case[];
-const html: string[] = cases.map((entry: Case): string => parse(entry.markdown));
 
-mkdirSync(outputDir, { recursive: true });
-writeFileSync(join(outputDir, 'html.json'), JSON.stringify(html));
+function loadCases(inputDir: string): Case[] {
+  const raw: string = readFileSync(join(inputDir, 'cases.json'), 'utf8');
+  const decoded: unknown = JSON.parse(raw);
+  if (!Array.isArray(decoded)) {
+    throw new Error('cases.json must contain a JSON array');
+  }
+  return decoded as Case[];
+}
+
+function renderAll(cases: Case[]): string[] {
+  const html: string[] = [];
+  for (const entry of cases) html.push(parse(entry.markdown));
+  return html;
+}
+
+function main(): void {
+  const { inputDir, outputDir } = dirsFromEnv();
+  const cases: Case[] = loadCases(inputDir);
+  const html: string[] = renderAll(cases);
+  mkdirSync(outputDir, { recursive: true });
+  writeFileSync(join(outputDir, 'html.json'), JSON.stringify(html));
+}
+
+main();
